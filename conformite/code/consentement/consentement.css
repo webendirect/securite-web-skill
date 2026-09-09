@@ -1,0 +1,203 @@
+/* Consentement — bandeau cookies.
+   Neutre et discret : à ré-habiller aux couleurs du projet.
+   Contrainte de conformité : « Tout refuser » et « Tout accepter » doivent
+   rester strictement identiques en taille, contraste et position. */
+
+.cnst {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 2147483000;
+  display: flex;
+  justify-content: center;
+  padding: 1rem;
+  pointer-events: none;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.cnst-boite {
+  pointer-events: auto;
+  width: 100%;
+  max-width: 34rem;
+  max-height: min(80vh, 40rem);
+  overflow-y: auto;
+  background: #fff;
+  color: #1a1a1a;
+  border: 1px solid #e2e2e2;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgb(0 0 0 / 0.16);
+  padding: 1.5rem;
+  animation: cnst-apparition 0.24s ease-out;
+}
+
+@keyframes cnst-apparition {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cnst-boite { animation: none; }
+}
+
+.cnst-titre {
+  margin: 0 0 0.5rem;
+  font-size: 1.0625rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.cnst-texte {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: #4a4a4a;
+}
+
+/* --- catégories --- */
+
+.cnst-cats {
+  margin: 0 0 1.125rem;
+  border-top: 1px solid #ececec;
+}
+
+.cnst-cat {
+  padding: 0.875rem 0;
+  border-bottom: 1px solid #ececec;
+}
+
+.cnst-cat-tete {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  cursor: pointer;
+}
+
+.cnst-cat-tete input {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: #1a1a1a;
+  flex: none;
+  cursor: pointer;
+}
+
+.cnst-cat-tete input:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.cnst-cat-titre {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.cnst-badge {
+  margin-left: auto;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #767676;
+  white-space: nowrap;
+}
+
+.cnst-cat-texte {
+  margin: 0.375rem 0 0 1.675rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #5a5a5a;
+}
+
+/* --- actions --- */
+
+.cnst-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.cnst-btn {
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 550;
+  padding: 0.6875rem 1rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.cnst-btn:hover { opacity: 0.85; }
+
+.cnst-btn:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* Les deux boutons principaux sont volontairement identiques :
+   un « Refuser » minoré est le motif de sanction le plus fréquent. */
+.cnst-btn-principal {
+  background: #1a1a1a;
+  color: #fff;
+  border-color: #1a1a1a;
+}
+
+.cnst-btn-secondaire {
+  grid-column: 1 / -1;
+  background: transparent;
+  color: #4a4a4a;
+  border-color: #d8d8d8;
+}
+
+.cnst-liens {
+  margin: 0.875rem 0 0;
+  display: flex;
+  gap: 1rem;
+  font-size: 0.75rem;
+}
+
+.cnst-liens a {
+  color: #767676;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* --- substitut de contenu bloqué --- */
+
+[data-consentement-substitut] {
+  display: grid;
+  place-content: center;
+  gap: 0.75rem;
+  text-align: center;
+  padding: 2rem 1.25rem;
+  background: #f4f4f5;
+  border: 1px dashed #d4d4d8;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  color: #52525b;
+}
+
+/* --- thème sombre --- */
+
+@media (prefers-color-scheme: dark) {
+  .cnst-boite {
+    background: #17171a;
+    color: #f0f0f0;
+    border-color: #2c2c31;
+    box-shadow: 0 10px 40px rgb(0 0 0 / 0.5);
+  }
+  .cnst-texte { color: #b4b4b8; }
+  .cnst-cats, .cnst-cat { border-color: #2c2c31; }
+  .cnst-cat-texte { color: #a1a1a6; }
+  .cnst-badge { color: #8a8a90; }
+  .cnst-cat-tete input { accent-color: #f0f0f0; }
+  .cnst-btn-principal { background: #f0f0f0; color: #17171a; border-color: #f0f0f0; }
+  .cnst-btn-secondaire { color: #b4b4b8; border-color: #3a3a41; }
+  .cnst-liens a { color: #8a8a90; }
+  [data-consentement-substitut] { background: #1f1f23; border-color: #3a3a41; color: #a1a1a6; }
+}
+
+/* --- petits écrans --- */
+
+@media (max-width: 30rem) {
+  .cnst { padding: 0.5rem; }
+  .cnst-boite { padding: 1.25rem; border-radius: 10px; }
+  .cnst-actions { grid-template-columns: 1fr; }
+}
