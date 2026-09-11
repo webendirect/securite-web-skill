@@ -187,3 +187,72 @@ Points à vérifier si l'app utilise OAuth / OIDC :
 - Les URL de redirection sont sur une liste blanche stricte, sans joker.
 - L'email renvoyé par le fournisseur n'est accepté que s'il est marqué vérifié — sinon on peut créer un compte chez un fournisseur laxiste avec l'email d'une victime et prendre son compte existant.
 - Le rattachement d'un compte OAuth à un compte existant demande une confirmation, jamais un rattachement automatique sur simple correspondance d'email.
+
+---
+
+## 1.9 Données bancaires
+
+**La faille.** Le site collecte lui-même le numéro de carte — un champ dans un formulaire maison, parfois enregistré « pour faciliter le prochain achat ». C'est le signal le plus alarmant qu'un visiteur puisse rencontrer, et la seule faille de cette compétence dont les conséquences se comptent directement en euros volés sur le compte de quelqu'un.
+
+**Détecter.** Chercher dans les formulaires, les schémas de base et les journaux :
+
+```
+card        carte       numero_carte    pan
+cvv         cvc         cryptogramme    security_code
+expiry      exp_month   exp_year        date_expiration
+```
+
+Vérifier aussi ce que capturent le suivi d'erreurs et les journaux applicatifs : un outil configuré pour enregistrer le contenu des formulaires aspire le numéro de carte sans que personne l'ait décidé. Même chose pour les outils de rejeu de session, qui filment l'écran du visiteur.
+
+**Le correctif.** La saisie passe par des **champs hébergés par le prestataire** — Stripe Elements, PayPal, Mollie, les solutions des banques françaises. Le numéro est saisi dans un cadre appartenant au prestataire, incrusté dans la page : les données ne touchent jamais le serveur du site, qui ne reçoit qu'un jeton de paiement.
+
+Ce qu'on conserve légitimement côté site : l'identifiant client chez le prestataire, les quatre derniers chiffres, le type de carte, la date d'expiration du moyen enregistré chez le prestataire. Jamais le numéro complet, jamais le cryptogramme — celui-ci ne doit d'ailleurs être conservé par personne, même chiffré, même une seconde.
+
+**Pourquoi c'est non négociable.** Traiter soi-même un numéro de carte fait entrer le client dans le périmètre PCI-DSS : questionnaire annuel, ségrégation réseau, chiffrement documenté, scans trimestriels. C'est hors de portée d'une PME, et le prestataire de paiement l'absorbe entièrement quand on utilise ses champs hébergés.
+
+Cette règle vaut à **tous les niveaux** de la passe 0, y compris sur un site vitrine qui n'encaisse qu'un acompte. Il n'existe pas de volume assez faible pour justifier de stocker une carte.
+
+**Si des données bancaires sont déjà en base**, c'est un incident, pas un correctif de routine : purger les colonnes, purger les journaux et les sauvegardes qui les contiennent, et vérifier si une notification s'impose — voir `conformite/04-preuve-et-registre.md`.
+
+**Prompt à coller**
+
+> Cherche si mon site collecte ou stocke lui-même des données bancaires : champs de formulaire (card, cvv, cvc, expiry, pan), colonnes de base correspondantes, et tout endroit où un journal, un outil de suivi d'erreurs ou un enregistreur de session pourrait capturer le contenu d'un formulaire de paiement. Si c'est le cas, remplace la saisie par les champs hébergés de mon prestataire de paiement, et dis-moi quelles données doivent être purgées de la base, des journaux et des sauvegardes existantes.
+
+---
+
+## 1.10 Changements sensibles et alertes
+
+**La faille.** Le chemin classique du vol de compte définitif ne passe pas par le mot de passe : l'attaquant qui a une session ouverte **change l'adresse email**, puis demande une réinitialisation. Le propriétaire légitime ne peut plus rien récupérer — l'adresse de récupération appartient maintenant à quelqu'un d'autre.
+
+Un mot de passe volé se change. Un compte dont l'email a été changé est perdu.
+
+**Le protocole du changement d'adresse email.** Cinq règles, et la deuxième est celle qui protège réellement :
+
+1. Le mot de passe est redemandé avant même d'accepter la demande.
+2. Un email part vers l'**ancienne** adresse, contenant un lien d'annulation valable plusieurs jours. C'est le seul point de la chaîne que l'attaquant ne contrôle pas.
+3. Un lien de validation part vers la nouvelle adresse.
+4. Le changement ne devient effectif qu'après validation de la nouvelle adresse.
+5. L'ancienne adresse reste l'adresse de connexion et de récupération tant que ce n'est pas confirmé.
+
+**Les notifications qui protègent vraiment.** Un email court, qui dit ce qui vient de se passer et quoi faire si ce n'était pas l'utilisateur :
+
+| Événement | Destinataire |
+|---|---|
+| Demande de changement d'email | ancienne **et** nouvelle adresse |
+| Mot de passe changé | adresse du compte |
+| 2FA activée ou désactivée | adresse du compte |
+| Moyen de paiement ajouté | adresse du compte |
+| Suppression de compte demandée | adresse du compte |
+| Connexion depuis un appareil ou une localisation inconnus | adresse du compte |
+
+Chaque message doit contenir une action : « ce n'était pas vous ? sécurisez votre compte » avec un lien qui révoque les sessions et force une réinitialisation.
+
+**Appareils connectés.** Un écran listant les sessions actives — date, appareil, localisation approximative — avec la possibilité de révoquer une session ou toutes les autres. C'est ce qui permet à quelqu'un qui se sait compromis de reprendre la main sans appeler le support.
+
+**Calibrer selon la passe 0.** Aux niveaux 1 et 2, les alertes de changement d'email et de mot de passe suffisent, et elles coûtent deux emails à écrire. Les alertes de connexion et l'écran des appareils ne se justifient qu'à partir du **niveau 3** : sur un site à faible enjeu, elles produisent surtout des messages ignorés, et un signal qu'on ignore ne protège plus de rien.
+
+**Ne pas fuiter en alertant.** L'email d'alerte ne contient jamais le mot de passe, le jeton, ni l'adresse IP complète. « Un nouvel appareil s'est connecté depuis la France » suffit ; l'adresse exacte appartient aux journaux, pas à un email qui peut être transféré.
+
+**Prompt à coller**
+
+> Vérifie comment mon app gère le changement d'adresse email. Mets en place le protocole complet : mot de passe redemandé, email de confirmation envoyé à l'ANCIENNE adresse avec un lien d'annulation valable plusieurs jours, lien de validation vers la nouvelle, changement effectif seulement après validation. Ajoute ensuite les notifications sur les événements sensibles — changement de mot de passe, 2FA, moyen de paiement, suppression de compte — chacune avec une action « ce n'était pas vous ». Dis-moi quelles alertes tu recommandes au niveau de sécurité retenu en passe 0, et lesquelles seraient excessives.
