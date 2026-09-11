@@ -154,6 +154,25 @@ Un audit est une photo à un instant donné. Ce qui tient dans le temps :
 
 ---
 
+### Reconnaître qu'on est déjà compromis
+
+Les alertes ci-dessus signalent une attaque **en cours**. Elles ne disent rien d'une intrusion déjà réussie et installée — cas le plus fréquent, puisque la majorité des victimes l'apprennent par un tiers, des mois après.
+
+Les signes à chercher, sur le serveur comme dans l'application :
+
+- un **compte administrateur** qu'on ne reconnaît pas, ou un compte existant dont le rôle a changé ;
+- un **fichier modifié sans déploiement** — comparer les dates de modification avec la date du dernier déploiement ;
+- un fichier **apparu dans un dossier d'upload**, surtout s'il est exécutable ;
+- une **tâche planifiée** ou un processus inconnu (`crontab -l`, `systemctl list-timers`, les tâches planifiées WordPress) ;
+- du **trafic sortant inhabituel** — le serveur qui contacte des adresses qu'il n'a aucune raison de contacter ;
+- un **envoi massif d'emails** depuis le domaine, ou une chute brutale de la délivrabilité ;
+- le site **signalé comme dangereux** par un navigateur, ou déclassé sans raison par un moteur de recherche ;
+- des **pages inconnues indexées** — le référencement parasite est la monétisation la plus courante d'un site compromis, et il reste invisible pour le propriétaire, qui ne voit jamais ces pages.
+
+Si l'un de ces signes est constaté, **on ne nettoie pas d'abord** : on préserve les journaux et une copie de l'état actuel avant toute intervention, sinon on détruit la seule trace de ce qui s'est passé et on ne saura jamais par où l'attaquant est entré — ni s'il est toujours là. La suite relève de la procédure de violation : `conformite/04-preuve-et-registre.md`.
+
+---
+
 ## 4.9 Sauvegardes
 
 Ce n'est pas un sujet annexe : la sauvegarde est la dernière défense contre le rançongiciel et contre la fausse manipulation.

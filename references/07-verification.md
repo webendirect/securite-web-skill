@@ -153,3 +153,5 @@ Recommandations de suivi
 ```
 
 Toujours conclure par une date de prochaine revue. La sécurité n'est pas un livrable ponctuel : chaque nouvelle fonctionnalité rouvre la surface d'attaque.
+
+La cadence à retenir selon le niveau, et surtout les **déclencheurs** qui imposent une revue hors calendrier — nouvelle fonctionnalité sensible, plugin ajouté, changement de prestataire, départ d'une personne ayant des accès — sont dans `assets/questionnaire-client.md`, volet 4.

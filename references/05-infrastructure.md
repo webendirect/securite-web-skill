@@ -125,6 +125,20 @@ Vérifier avec [mail-tester.com](https://www.mail-tester.com) ou [dmarcian](http
 
 ---
 
+### Le domaine sosie
+
+Tout ce qui précède protège **ton** domaine contre le détournement. Rien n'empêche un tiers de déposer un domaine ressemblant pour imiter le site : `monclient-paiement.fr`, `mon-client.fr` quand l'original est `monclient.fr`, ou la faute de frappe la plus probable. C'est le support classique du hameçonnage ciblant les clients du site — et c'est eux qui paient, pas le site.
+
+Ce qu'on peut faire, par ordre de coût :
+
+- **Déposer soi-même les variantes évidentes** au moment de la création : le tiret, le `.com` si l'original est en `.fr` et l'inverse, le pluriel, la faute de frappe la plus courante. Quelques dizaines d'euros par an, et elles redirigent vers le site officiel.
+- **Surveiller les certificats** émis pour des domaines proches, via les journaux de transparence des certificats (`crt.sh` en recherche manuelle, ou un service d'alerte). Un certificat émis pour un domaine sosie précède presque toujours une campagne de hameçonnage.
+- **Dire aux clients ce que le site ne fera jamais** : ne jamais demander de mot de passe par email, ne jamais demander un virement vers un nouveau RIB par email. Cette phrase, écrite une fois dans les emails transactionnels, arrête davantage d'attaques que la plupart des mesures techniques.
+
+En cas de constat : signaler au registrar du domaine sosie et à l'hébergeur de la page, prévenir les clients sans attendre que la fraude aboutisse, et conserver les preuves (captures, dates, WHOIS) avant que la page ne disparaisse.
+
+---
+
 ## 5.6 Accès au serveur
 
 Sur un VPS :
