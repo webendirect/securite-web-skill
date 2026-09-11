@@ -6,14 +6,37 @@
  * confidentialité doit en être le reflet exact.
  *
  * Ajouter une table qui contient des données personnelles sans l'y déclarer
- * est le manquement le plus courant : prévoir un test qui compare cette liste
- * au schéma réel de la base.
+ * est le manquement le plus courant : le test tests/sql/02-test-purge.sql
+ * vérifie que chaque règle vise une table et des colonnes réelles.
+ *
+ * IDEMPOTENCE — règle de conception centrale de ce fichier.
+ * Une purge tourne toutes les nuits sur les mêmes données. Une règle qui ne
+ * sait pas reconnaître ce qu'elle a déjà traité retraite les mêmes lignes
+ * indéfiniment : compteurs faux, écritures inutiles, et collision d'unicité
+ * sur les valeurs d'anonymisation. Toute règle 'anonymiser' ou 'procedure'
+ * DOIT donc porter un `marqueurTraite` ; la purge y ajoute automatiquement
+ * « and <marqueurTraite> is null ».
  */
 
 export type Action =
   | 'supprimer'      // la ligne disparaît
   | 'anonymiser'     // la ligne reste, l'identification disparaît irréversiblement
   | 'archiver'       // sort de la base active, accès restreint (obligation légale)
+  | 'procedure'      // délégué à une fonction SQL dédiée (voir `procedure`)
+
+/**
+ * Valeur de remplacement pour une colonne anonymisée.
+ *
+ *   null            -> SQL NULL
+ *   'texte'         -> littéral, échappé
+ *   { sql: '...' }  -> expression SQL évaluée PAR LIGNE
+ *
+ * La forme { sql } est indispensable pour tout ce qui doit rester unique :
+ * une valeur calculée en TypeScript est figée dans la requête, donc identique
+ * pour toutes les lignes d'un même UPDATE — ce qui viole immédiatement un
+ * index unique dès la deuxième ligne.
+ */
+export type Remplacement = string | null | { sql: string }
 
 export type Regle = {
   /** Table concernée. */
@@ -27,9 +50,17 @@ export type Regle = {
   /** Ce qu'on fait au terme. */
   action: Action
   /** Pour 'anonymiser' : colonnes à neutraliser et valeur de remplacement. */
-  anonymiser?: Record<string, string | null>
+  anonymiser?: Record<string, Remplacement>
+  /**
+   * Colonne horodatée renseignée quand la ligne a été traitée. Exclut
+   * automatiquement les lignes déjà traitées : c'est ce qui rend la purge
+   * idempotente. Obligatoire pour 'anonymiser' et 'procedure'.
+   */
+  marqueurTraite?: string
   /** Condition SQL supplémentaire (ex. ne purger que les comptes non premium). */
   condition?: string
+  /** Pour 'procedure' : nom de la fonction SQL à appeler. */
+  procedure?: string
   /** Pourquoi cette durée — apparaît dans le registre et la doc client. */
   fondement: string
 }
@@ -74,7 +105,10 @@ export const POLITIQUE: Regle[] = [
     jours: 3 * ANS,
     action: 'anonymiser',
     anonymiser: {
-      email: null,          // remplacé par une valeur unique générée à la purge
+      // gen_random_uuid() est réévalué pour CHAQUE ligne. Sans cela, un seul
+      // UPDATE écrirait la même adresse partout et l'index unique sur email
+      // ferait échouer la purge dès le deuxième compte échu.
+      email: { sql: "'supprime+' || gen_random_uuid() || '@invalide.local'" },
       nom: 'Compte supprimé',
       prenom: null,
       telephone: null,
@@ -82,6 +116,9 @@ export const POLITIQUE: Regle[] = [
       avatar_url: null,
       mot_de_passe_hash: null,
     },
+    marqueurTraite: 'anonymise_le',
+    // Un compte en cours de suppression volontaire relève de la procédure
+    // d'effacement (phase 2), pas de la purge d'inactivité.
     condition: 'supprime_le is null',
     fondement:
       'Plus de finalité active après 3 ans sans connexion. Anonymisation ' +
@@ -102,6 +139,21 @@ export const POLITIQUE: Regle[] = [
     jours: 7,
     action: 'supprimer',
     fondement: 'Jeton valable 1 h ; 7 jours de marge pour le diagnostic',
+  },
+
+  /* --------------------------------------------- effacement à la demande */
+  {
+    table: 'utilisateurs',
+    description: 'Comptes supprimés dont la fenêtre de rétractation est échue',
+    champDate: 'purge_prevue_le',
+    jours: 0, // l'échéance est déjà portée par purge_prevue_le
+    action: 'procedure',
+    procedure: 'purger_comptes_supprimes',
+    marqueurTraite: 'purge_effectuee_le',
+    condition: 'supprime_le is not null',
+    fondement:
+      'Phase 2 de l’effacement (art. 17). La durée de la fenêtre de ' +
+      'rétractation est un choix métier, fixé à la demande de suppression.',
   },
 
   /* -------------------------------------------------------- obligations légales */
@@ -151,16 +203,77 @@ export const POLITIQUE: Regle[] = [
   },
 ]
 
+/** Formate une durée en jours de façon lisible : « 3 ans et 6 mois », « 7 jours ». */
+export function formatDuree(jours: number): string {
+  if (jours === 0) return 'immédiatement'
+  const ans = Math.floor(jours / ANS)
+  const reste = jours - ans * ANS
+  const mois = Math.floor(reste / MOIS)
+  const j = reste - mois * MOIS
+  const parts: string[] = []
+  if (ans) parts.push(`${ans} an${ans > 1 ? 's' : ''}`)
+  if (mois) parts.push(`${mois} mois`)
+  if (j) parts.push(`${j} jour${j > 1 ? 's' : ''}`)
+  return parts.join(' et ')
+}
+
 /** Résumé lisible, pour la politique de confidentialité et le registre. */
-export function resumeLisible(): string {
-  const format = (j: number) => {
-    if (j === 0) return 'immédiatement'
-    if (j % ANS === 0) return `${j / ANS} an${j / ANS > 1 ? 's' : ''}`
-    if (j % MOIS === 0) return `${j / MOIS} mois`
-    return `${j} jours`
+export function resumeLisible(politique: Regle[] = POLITIQUE): string {
+  const verbe: Record<Action, string> = {
+    supprimer: 'Suppression',
+    anonymiser: 'Anonymisation',
+    archiver: 'Archivage',
+    procedure: 'Procédure dédiée',
   }
-  const verbe = { supprimer: 'Suppression', anonymiser: 'Anonymisation', archiver: 'Archivage' }
-  return POLITIQUE
-    .map((r) => `${r.description} — ${format(r.jours)} — ${verbe[r.action]} (${r.fondement})`)
+  return politique
+    .map((r) => `${r.description} — ${formatDuree(r.jours)} — ${verbe[r.action]} (${r.fondement})`)
     .join('\n')
+}
+
+/**
+ * Contrôle de cohérence de la politique elle-même, exécuté par la purge avant
+ * toute écriture. Une politique incohérente est un risque de suppression
+ * incorrecte : mieux vaut refuser de tourner que purger de travers.
+ *
+ * Valide aussi la forme des identifiants, parce que la purge les interpole
+ * dans le SQL (un nom de table ne peut pas être un paramètre lié).
+ */
+export function validerPolitique(politique: Regle[] = POLITIQUE): string[] {
+  const erreurs: string[] = []
+  const identifiant = /^[a-z_][a-z0-9_]*$/i
+
+  for (const r of politique) {
+    const ou = `${r.table}/${r.description}`
+    if (!identifiant.test(r.table)) erreurs.push(`${ou} : nom de table invalide`)
+    if (!identifiant.test(r.champDate)) erreurs.push(`${ou} : champDate invalide`)
+    if (r.marqueurTraite && !identifiant.test(r.marqueurTraite)) {
+      erreurs.push(`${ou} : marqueurTraite invalide`)
+    }
+    if (!Number.isInteger(r.jours) || r.jours < 0) {
+      erreurs.push(`${ou} : durée invalide (${r.jours})`)
+    }
+
+    if (r.action === 'anonymiser') {
+      if (!r.anonymiser || Object.keys(r.anonymiser).length === 0) {
+        erreurs.push(`${ou} : action 'anonymiser' sans colonnes à neutraliser`)
+      }
+      // Sans marqueur, la règle retraiterait les mêmes lignes chaque nuit.
+      if (!r.marqueurTraite) {
+        erreurs.push(`${ou} : action 'anonymiser' sans marqueurTraite (purge non idempotente)`)
+      }
+      for (const col of Object.keys(r.anonymiser ?? {})) {
+        if (!identifiant.test(col)) erreurs.push(`${ou} : colonne '${col}' invalide`)
+      }
+    }
+
+    if (r.action === 'procedure') {
+      if (!r.procedure || !identifiant.test(r.procedure)) {
+        erreurs.push(`${ou} : action 'procedure' sans fonction SQL valide`)
+      }
+      if (!r.marqueurTraite) {
+        erreurs.push(`${ou} : action 'procedure' sans marqueurTraite`)
+      }
+    }
+  }
+  return erreurs
 }

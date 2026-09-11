@@ -79,6 +79,32 @@ Déclencheur, selon l'hébergement : `pg_cron` sur Postgres, une fonction planif
 
 **Toujours passer en mode simulation avant la première exécution réelle.** Une purge mal bornée efface la base de production, et c'est la sauvegarde qui devient la conformité.
 
+### Deux propriétés sans lesquelles une purge nocturne ne tient pas
+
+**Elle doit être idempotente.** Elle tourne toutes les nuits sur les mêmes
+données : une règle qui ne sait pas reconnaître ce qu'elle a déjà traité
+retraite les mêmes lignes indéfiniment. Conséquences : compteurs faux, donc
+journal de preuve faux ; écritures inutiles ; et collisions sur les index
+uniques. D'où le **marqueur de traitement** (`anonymise_le`,
+`purge_effectuee_le`) posé dans la même écriture que le traitement, et repris
+dans la clause de sélection. Le test : **lancer deux fois, la seconde ne doit
+rien traiter.**
+
+**Les valeurs de remplacement doivent être générées par ligne.** Une valeur
+calculée côté application est figée dans la requête, donc identique pour toutes
+les lignes d'un même `UPDATE` :
+
+```sql
+-- Faux : la même adresse pour tous les comptes anonymisés
+--        -> violation d'unicité dès le deuxième compte échu
+update utilisateurs set email = 'supprime+<uuid-calcule-en-JS>@invalide.local' where ...
+
+-- Juste : PostgreSQL réévalue l'expression pour chaque ligne
+update utilisateurs set email = 'supprime+' || gen_random_uuid() || '@invalide.local' where ...
+```
+
+Ces deux points sont couverts par `tests/sql/02-test-purge.sql`.
+
 ## Les endroits qu'on oublie
 
 La purge de la table principale ne suffit pas. Les mêmes données vivent souvent :
