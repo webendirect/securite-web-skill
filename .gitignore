@@ -1,2 +1,13 @@
 .DS_Store
 node_modules/
+
+# Secrets — la passe 4.2 impose ces motifs dans tout projet audité.
+# Ils n'ont pas plus de raison de manquer ici qu'ailleurs.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Artefacts de test
+pgdata/

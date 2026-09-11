@@ -1,0 +1,14 @@
+{
+  "name": "securite-web-skill",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Tests de la compétence securite-web. Le dépôt n'est pas un paquet npm : ce fichier ne sert qu'à faire tourner la suite de tests.",
+  "type": "module",
+  "scripts": {
+    "test": "bash tests/run-tests.sh"
+  },
+  "devDependencies": {
+    "jsdom": "^26.0.0",
+    "typescript": "^5.9.3"
+  }
+}
