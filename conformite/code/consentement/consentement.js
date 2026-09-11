@@ -126,6 +126,42 @@
 
   /* ------------------------------------------- activation des scripts tiers */
 
+  /**
+   * Retrouve le substitut (placeholder) associé à UN cadre précis.
+   *
+   * Une recherche globale par catégorie renvoie le même premier élément pour
+   * tous les cadres de la page : avec trois vidéos, deux substituts restent
+   * affichés par-dessus les vidéos activées. Trois stratégies, de la plus
+   * explicite à la plus permissive :
+   *
+   *   1. data-substitut="id-du-placeholder" sur le cadre — appariement explicite ;
+   *   2. le substitut le plus proche en remontant les ancêtres du cadre :
+   *        <div class="video">
+   *          <div data-consentement-substitut="marketing">…</div>
+   *          <iframe data-consentement="marketing" data-src="…"></iframe>
+   *        </div>
+   *   3. aucun substitut : rien à masquer, ce n'est pas une erreur.
+   *
+   * Un substitut déjà apparié à un autre cadre n'est jamais réutilisé.
+   */
+  function substitutPour(cadre, dejaPris) {
+    var id = cadre.getAttribute('data-substitut')
+    if (id) {
+      var explicite = document.getElementById(id)
+      return explicite && dejaPris.indexOf(explicite) === -1 ? explicite : null
+    }
+
+    var parent = cadre.parentElement
+    while (parent && parent !== document.body) {
+      var candidats = parent.querySelectorAll('[data-consentement-substitut]')
+      for (var i = 0; i < candidats.length; i++) {
+        if (dejaPris.indexOf(candidats[i]) === -1) return candidats[i]
+      }
+      parent = parent.parentElement
+    }
+    return null
+  }
+
   function activerCategorie(categorie) {
     var scripts = document.querySelectorAll(
       'script[type="text/plain"][data-consentement="' + categorie + '"]'
@@ -146,17 +182,46 @@
     var cadres = document.querySelectorAll(
       'iframe[data-consentement="' + categorie + '"][data-src]'
     )
+    var apparies = []
     Array.prototype.forEach.call(cadres, function (cadre) {
+      // Le substitut est résolu AVANT d'activer le cadre : une fois data-src
+      // retiré, le cadre n'est plus reconnaissable comme en attente.
+      var substitut = substitutPour(cadre, apparies)
       cadre.src = cadre.dataset.src
       cadre.removeAttribute('data-src')
-      var substitut = document.querySelector(
-        '[data-consentement-substitut="' + categorie + '"]'
-      )
-      if (substitut) substitut.hidden = true
+      cadre.setAttribute('data-consentement-actif', 'true')
+      if (substitut) {
+        substitut.hidden = true
+        apparies.push(substitut)
+      }
     })
   }
 
-  /** Google Consent Mode v2 — obligatoire dans l'EEE si gtag est présent. */
+  /**
+   * Google Consent Mode v2 — obligatoire dans l'EEE si gtag est présent.
+   *
+   * ATTENTION : « update » ne suffit pas à lui seul. L'état par défaut doit
+   * être posé en « denied » AVANT que gtag ne se charge, sinon la première
+   * mesure part avant le consentement. Ce fichier ne peut pas le faire : il
+   * s'exécute après le <head>. À coller tel quel dans le <head>, avant le
+   * conteneur GTM :
+   *
+   *   <script>
+   *     window.dataLayer = window.dataLayer || [];
+   *     function gtag(){dataLayer.push(arguments);}
+   *     gtag('consent', 'default', {
+   *       analytics_storage: 'denied',
+   *       ad_storage: 'denied',
+   *       ad_user_data: 'denied',
+   *       ad_personalization: 'denied',
+   *       wait_for_update: 500
+   *     });
+   *   </script>
+   *
+   * Si le conteneur GTM est lui-même bloqué par ce script (type="text/plain"),
+   * ce bloc reste une ceinture de sécurité utile : il couvre le cas où
+   * quelqu'un rajoute gtag directement dans le <head> plus tard.
+   */
   function majConsentMode() {
     if (typeof window.gtag !== 'function') return
     window.gtag('consent', 'update', {

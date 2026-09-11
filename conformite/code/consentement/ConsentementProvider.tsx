@@ -351,6 +351,14 @@ export function ScriptConsenti({
 /**
  * Contenu externe (vidéo, carte) remplacé par une invitation tant que la
  * catégorie n'est pas consentie — meilleure expérience qu'un cadre vide.
+ *
+ * NOTE — cette version n'est pas concernée par le défaut d'appariement corrigé
+ * dans consentement.js. Là-bas, le substitut est un élément distinct du DOM
+ * qu'il faut retrouver et masquer, d'où le risque de masquer toujours le même.
+ * Ici, le composant rend SOIT le substitut SOIT le cadre : chaque instance
+ * porte le sien, et il n'y a rien à apparier. Ne pas « harmoniser » les deux
+ * implémentations sur ce point : elles résolvent le même problème par deux
+ * mécanismes différents, tous deux corrects.
  */
 export function CadreConsenti({
   categorie, src, titre, ...props
