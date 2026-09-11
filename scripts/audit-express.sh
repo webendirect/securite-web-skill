@@ -14,7 +14,24 @@ if [ -z "$URL" ]; then
   exit 1
 fi
 URL="${URL%/}"
-HOST="$(printf '%s' "$URL" | sed -E 's#^https?://##; s#/.*##')"
+
+# Normalisation du domaine : voir scripts/lib-domaine.sh. Un « www. » laissé
+# dans la requête DNS fait annoncer « SPF MANQUANT » sur un domaine
+# parfaitement configuré — un faux positif dans un rapport client coûte plus
+# cher que l'absence du contrôle.
+ICI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ ! -r "$ICI/lib-domaine.sh" ]; then
+  echo "Fichier manquant : $ICI/lib-domaine.sh" >&2
+  exit 1
+fi
+# shellcheck source=lib-domaine.sh
+. "$ICI/lib-domaine.sh"
+
+if ! HOST="$(normaliser_hote "$URL")"; then
+  echo "Domaine invalide : ${1}" >&2
+  echo "Usage : $0 https://mon-domaine.fr" >&2
+  exit 1
+fi
 
 vert()  { printf '\033[32m%s\033[0m\n' "$1"; }
 rouge() { printf '\033[31m%s\033[0m\n' "$1"; }
@@ -99,13 +116,35 @@ done
 [ "$found" = "0" ] && vert "  Aucune sourcemap publique détectée"
 
 titre "DNS courrier (SPF / DMARC)"
+# SPF et DMARC se publient presque toujours sur le domaine racine. On
+# interroge donc l'hôte ET sa racine avant de conclure à une absence, et on
+# indique quel domaine porte l'enregistrement trouvé.
+DOMAINES="$(domaines_a_tester "$URL")"
 if command -v dig >/dev/null 2>&1; then
-  SPF="$(dig +short TXT "$HOST" 2>/dev/null | grep -i 'v=spf1' | head -1)"
-  DMARC="$(dig +short TXT "_dmarc.$HOST" 2>/dev/null | grep -i 'v=DMARC1' | head -1)"
-  [ -n "$SPF" ]   && vert "  OK       SPF   $SPF"    || rouge "  MANQUE   SPF — usurpation d'expéditeur possible"
-  [ -n "$DMARC" ] && vert "  OK       DMARC $DMARC"  || rouge "  MANQUE   DMARC — commencer en p=none"
+  SPF=""; SPF_SUR=""; DMARC=""; DMARC_SUR=""
+  while IFS= read -r d; do
+    [ -z "$d" ] && continue
+    if [ -z "$SPF" ]; then
+      SPF="$(dig +short TXT "$d" 2>/dev/null | grep -i 'v=spf1' | head -1)"
+      [ -n "$SPF" ] && SPF_SUR="$d"
+    fi
+    if [ -z "$DMARC" ]; then
+      DMARC="$(dig +short TXT "_dmarc.$d" 2>/dev/null | grep -i 'v=DMARC1' | head -1)"
+      [ -n "$DMARC" ] && DMARC_SUR="$d"
+    fi
+  done <<< "$DOMAINES"
+
+  INTERROGES="$(printf '%s' "$DOMAINES" | tr '\n' ' ')"
+  gris "  domaines interrogés : $INTERROGES"
+
+  if [ -n "$SPF" ]; then vert "  OK       SPF   ($SPF_SUR) $SPF"
+  else rouge "  MANQUE   SPF sur $INTERROGES — usurpation d'expéditeur possible"; fi
+
+  if [ -n "$DMARC" ]; then vert "  OK       DMARC ($DMARC_SUR) $DMARC"
+  else rouge "  MANQUE   DMARC sur $INTERROGES — commencer en p=none"; fi
 else
-  gris "  dig non installé — vérifier SPF/DMARC sur mail-tester.com"
+  gris "  dig non installé — contrôle NON EXÉCUTÉ."
+  gris "  domaines à vérifier sur mail-tester.com : $(printf '%s' "$DOMAINES" | tr '\n' ' ')"
 fi
 
 titre "À vérifier ensuite, à la main"
