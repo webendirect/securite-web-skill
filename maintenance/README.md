@@ -35,3 +35,11 @@ Une mission qui modifie la compétence s'archive ici **avant** d'être exécuté
 pas après. C'est ce qui permet de vérifier, à la fin, que ce qui a été fait
 correspond à ce qui avait été demandé — la dixième des vérifications avant push
 de `references/10-methode-de-correction.md`.
+
+## Ce dossier ne compte jamais comme couverture
+
+Une mission archivée décrit ce qui **devait** être fait, pas ce qui l'a été. Elle emploie le vocabulaire de ce qu'elle demande d'écrire — une mission portant sur les données bancaires contient les mots « PCI », « cryptogramme », « cvv » alors que la compétence, elle, peut n'en contenir aucun.
+
+Conséquence pratique : **toute vérification de couverture doit exclure `maintenance/`.** Une recherche qui l'inclut mesure l'intention et non le résultat, et conclut à tort qu'un sujet est traité.
+
+Une mission n'est accomplie que lorsque son contenu figure dans `references/`, `conformite/`, `assets/` ou `scripts/`, et que `SECURITY-REPORT.md` le constate. C'est la règle de la passe 10 appliquée à la compétence elle-même : une ligne sans preuve est une intention, pas une correction.

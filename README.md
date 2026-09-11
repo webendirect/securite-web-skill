@@ -45,6 +45,7 @@ Pour travailler sans Claude Code, `assets/prompts-rapides.md` contient 20 prompt
 
 | Passe | Contenu |
 |---|---|
+| **Questionnaire client** | les angles morts hors du code : inventaire des accès, dépendance au prestataire, coût d'un incident, cadence de revue — plus la grille des vingt questions visiteur / propriétaire |
 | **0 — Budget de friction** | calibrer la sécurité sur ce qu'on protège : niveau du site, où placer la friction, quelles protections écarter volontairement |
 | **1 — Authentification** | stockage du jeton, vérification email, rate limiting, règles de mots de passe, cycle de vie des sessions, réinitialisation, 2FA, OAuth |
 | **2 — Autorisation** | vérification serveur des rôles, IDOR, RLS Supabase / règles Firestore, mass assignment, fuites dans les réponses API, isolation multi-tenant |
@@ -83,6 +84,7 @@ references/07-verification.md         tests, preuves, rapport client
 references/08-cicd-et-chaine-outils.md GitHub Actions, dépôt, chaîne d'approvisionnement
 references/09-non-regression.md       Git, cassures, parcours de vérification
 references/10-methode-de-correction.md corriger, tester, vérifier, livrer
+assets/questionnaire-client.md        à remplir avec le client, avant tout le reste
 assets/mission-audit-complet.md       prompt de mission — audit sécurité intégral
 assets/mission-rgpd.md                prompt de mission — audit RGPD technique
 assets/checklist-pre-lancement.md     à cocher avant chaque livraison

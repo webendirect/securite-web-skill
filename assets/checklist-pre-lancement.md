@@ -6,7 +6,10 @@
 
 ## Avant de commencer
 
+- [ ] Questionnaire client rempli (`assets/questionnaire-client.md`), « je ne sais pas » listés
 - [ ] Niveau de sécurité retenu (1 à 4) et protections écartées volontairement, écrits noir sur blanc
+- [ ] Accès inventoriés : comptes au nom du client, 2FA sur le registrar, anciens prestataires révoqués
+- [ ] Documentation de reprise remise au client
 - [ ] Dépôt propre, branche dédiée créée
 - [ ] Sauvegarde de la base testée, chemin de retour arrière connu chez l'hébergeur
 
@@ -33,6 +36,9 @@
 - [ ] Sessions invalidées à la déconnexion et au changement de mot de passe
 - [ ] Réponses identiques que le compte existe ou non (connexion, inscription, mot de passe oublié)
 - [ ] 2FA disponible, et obligatoire pour les comptes administrateurs
+- [ ] Aucune donnée bancaire collectée ni stockée par le site — champs hébergés du prestataire
+- [ ] Changement d'email protégé : mot de passe redemandé, confirmation à l'ancienne adresse, validation de la nouvelle
+- [ ] Alertes sur les événements sensibles, avec une action « ce n'était pas vous »
 - [ ] OAuth : `state` vérifié, PKCE, URL de redirection sur liste blanche, email vérifié exigé
 
 ## Données et API
@@ -113,4 +119,5 @@
 - [ ] Alerte de disponibilité
 - [ ] Alerte d'expiration du certificat et du domaine
 - [ ] Alerte sur les pics de 401/403/429
-- [ ] Date de prochaine revue de sécurité fixée avec le client
+- [ ] Date de prochaine revue fixée, et déclencheurs hors calendrier expliqués au client
+- [ ] Variantes évidentes du domaine déposées, ou risque accepté par écrit

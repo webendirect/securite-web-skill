@@ -6,7 +6,11 @@ L'ordre compte : les secrets d'abord, l'authentification ensuite, puis l'autoris
 
 ---
 
-## 0a · Budget de friction (avant tout)
+## 0 · Questionnaire client (avant de toucher au code)
+
+> Aide-moi à remplir le questionnaire client de `assets/questionnaire-client.md` pour ce projet. Commence par ce que tu peux déduire du code et de la configuration — services tiers, hébergement, prestataire de paiement, données stockées. Puis liste-moi les questions auxquelles seul le client peut répondre, regroupées par volet, sous une forme que je peux lui envoyer telle quelle. Termine par le bloc de sortie pré-rempli, et les « je ne sais pas » qui restent.
+
+## 0a · Budget de friction
 
 > Avant tout durcissement, aide-moi à fixer le niveau de sécurité de ce projet. Analyse ce que le site stocke réellement, ce qu'un attaquant gagnerait à prendre un compte, et qui sont les utilisateurs. Propose-moi un niveau de 1 à 4, puis la liste des protections justifiées à ce niveau et celles qui seraient excessives. Pour chaque protection retenue, dis-moi son coût en expérience utilisateur et où la placer dans le parcours. Ne propose aucune protection qui ajoute de la friction sans expliquer ce qu'elle protège concrètement.
 
@@ -51,6 +55,10 @@ L'ordre compte : les secrets d'abord, l'authentification ensuite, puis l'autoris
 ## 8 · Règles de mots de passe
 
 > Ajoute des règles sur les mots de passe : minimum 12 caractères, maximum au moins 64, et un contrôle contre la base Have I Been Pwned via l'API k-anonymity. Vérifie que le hachage utilise argon2id ou bcrypt avec un coût d'au moins 12. Applique ces règles à l'inscription ET à la réinitialisation. Ne mets pas de rotation forcée.
+
+## 8b · Données bancaires et changements sensibles
+
+> Cherche si mon site collecte ou stocke lui-même des données bancaires : champs card, cvv, cvc, expiry, pan, colonnes de base correspondantes, et tout endroit où un journal ou un outil de suivi d'erreurs pourrait capturer un formulaire de paiement. Remplace la saisie par les champs hébergés de mon prestataire. Vérifie ensuite le changement d'adresse email : mot de passe redemandé, confirmation envoyée à l'ANCIENNE adresse avec lien d'annulation, validation de la nouvelle avant effet. Ajoute les alertes sur les événements sensibles, calibrées au niveau retenu en passe 0.
 
 ## 9 · Validation des entrées
 

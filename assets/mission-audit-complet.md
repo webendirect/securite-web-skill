@@ -26,14 +26,19 @@ après modification.
 
 AVANT TOUT — DEUX PRÉALABLES
 
-A. Budget de friction. Analyse ce que le site stocke, ce qu'un attaquant
+A. Questionnaire client. Si assets/questionnaire-client.md a été rempli,
+pars de ses réponses. Sinon, dis-moi ce que tu ne peux pas déduire du code —
+accès et à quel nom, dépendance au prestataire, coût d'une journée d'arrêt,
+cadence de revue — et signale-le comme angle mort plutôt que de supposer.
+
+B. Budget de friction. Analyse ce que le site stocke, ce qu'un attaquant
 gagnerait à prendre un compte, et qui sont les utilisateurs. Propose-moi un
 niveau de sécurité de 1 à 4, les protections justifiées à ce niveau et celles
 qui seraient excessives. Chaque protection ajoutant une étape pour
 l'utilisateur doit être justifiée par ce qu'elle protège. Une protection qu'on
 ne sait pas justifier ne se pose pas.
 
-B. Filet. Vérifie que le dépôt est propre, crée une branche dédiée, et
+C. Filet. Vérifie que le dépôt est propre, crée une branche dédiée, et
 dis-moi comment revenir en arrière chez mon hébergeur. Un commit par groupe
 de correctifs, avec les effets de bord annoncés dans le message. Sauvegarde
 de la base avant toute migration ou purge. Jamais de travail direct sur la
@@ -103,6 +108,18 @@ passe, protection contre le bruteforce, limitation des tentatives, expiration
 et révocation des sessions, cookies Secure/HttpOnly/SameSite, protection des
 jetons, réinitialisation de mot de passe, vérification d'email, protection
 des comptes administrateurs, contrôle des permissions.
+
+Vérifie en outre, et signale-le comme CRITIQUE le cas échéant :
+  - le site collecte-t-il ou stocke-t-il lui-même des données bancaires —
+    champs card, cvv, cvc, expiry, pan, colonnes de base correspondantes,
+    capture par un journal ou un outil de suivi d'erreurs ? La saisie doit
+    passer par les champs hébergés du prestataire de paiement.
+  - le changement d'adresse email est-il protégé ? Mot de passe redemandé,
+    confirmation envoyée à l'ANCIENNE adresse avec lien d'annulation,
+    changement effectif seulement après validation de la nouvelle. Sans cela,
+    un attaquant ayant une session ouverte prend le compte définitivement.
+  - existe-t-il des alertes sur les événements sensibles, avec une action
+    « ce n'était pas vous » ?
 
 Vérifie qu'un utilisateur ne peut jamais accéder aux données ou aux fonctions
 d'un autre en modifiant un identifiant dans une URL ou une requête.

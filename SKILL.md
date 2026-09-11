@@ -128,7 +128,7 @@ Vérifier que rien n'est cassé (passe 9), produire le rapport (passe 10, étape
 
 | # | Passe | Référence | À faire si |
 |---|-------|-----------|-----------|
-| **0** | **Budget de friction** | `references/00-budget-de-friction.md` | **toujours, avant tout le reste** |
+| **0** | **Budget de friction** | `references/00-budget-de-friction.md` + `assets/questionnaire-client.md` | **toujours, avant tout le reste** |
 | 1 | Authentification et sessions | `references/01-authentification.md` | l'app a des comptes utilisateurs |
 | 2 | Autorisation et accès aux données | `references/02-autorisation.md` | l'app a des rôles, ou des données par utilisateur |
 | 3 | Entrées, API et injections | `references/03-entrees-et-api.md` | l'app a des formulaires ou une API |
