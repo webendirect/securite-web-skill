@@ -6,7 +6,7 @@ Trois obligations produisent l'essentiel des sanctions CNIL sur les sites de pet
 |---|---|---|
 | **1. Consentement** | Aucun traceur non nécessaire avant accord explicite | Bandeau qui bloque réellement les scripts + journal de preuve |
 | **2. Rétention** | Aucune donnée conservée sans durée définie | Politique déclarative + purge automatique |
-| **3. Effacement** | Toute personne peut récupérer et supprimer ses données | Routes d'export et de suppression, avec cascade |
+| **3. Effacement** | Toute personne peut récupérer et supprimer ses données | Export, et suppression en deux phases : accès coupés tout de suite, données détruites à l'échéance |
 | **4. Preuve** | Pouvoir démontrer les trois premières | Registre, journal des demandes, DPA |
 
 La quatrième n'est pas une fonctionnalité de plus : c'est ce qui rend les trois autres opposables en cas de contrôle. Être conforme sans pouvoir le prouver revient, devant la CNIL, à ne pas l'être.
@@ -32,8 +32,9 @@ code/retention/
   migration.sql                colonnes de suivi et index
 code/effacement/
   route-export.ts              export complet des données d'une personne (portabilité)
-  route-suppression.ts         suppression de compte avec cascade et conservation légale
-  migration-demandes.sql       registre des demandes d'exercice de droits
+  route-suppression.ts         phase 1 : désactivation immédiate, transactionnelle
+  route-annulation.ts          rétractation pendant la fenêtre, par jeton haché
+  migration-demandes.sql       registre des demandes + purger_comptes_supprimes() (phase 2)
 ```
 
 Le code est écrit pour **Next.js App Router + Postgres/Supabase**. Les fichiers `consentement.js` et `consentement.css` sont autonomes : ils fonctionnent sur n'importe quel site, y compris un site statique ou WordPress (à charger via `wp_enqueue_script`).
@@ -48,6 +49,11 @@ Le code est écrit pour **Next.js App Router + Postgres/Supabase**. Les fichiers
 ## Vérification
 
 ```bash
+# Le code de ce dossier est couvert par la suite de tests du dépôt.
+# À lancer après toute modification :
+bash ../tests/run-tests.sh
+
+# Reconnaissance passive du site en ligne :
 ../scripts/audit-express.sh https://mon-domaine.fr
 ```
 

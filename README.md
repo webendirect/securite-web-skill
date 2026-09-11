@@ -54,12 +54,13 @@ Pour travailler sans Claude Code, `assets/prompts-rapides.md` contient 20 prompt
 | **6 — RGPD** | cookies et consentement CNIL, mentions légales, droits des personnes, durées de conservation, sous-traitants, violation de données |
 | **7 — Vérification** | tests manuels avec curl, outils externes, tests automatisés anti-régression, modèle de rapport client |
 | **9 — Ne rien casser** | protocole Git et retour arrière, catalogue des faux 404/403/429 avec leurs garde-fous, parcours de non-régression après chaque groupe |
+| **10 — Méthode de correction** | corriger → tester → vérifier → committer → pousser : reproduction du défaut, transactions, idempotence, migrations déjà déployées, faux positifs, dix vérifications avant push |
 | **8 — CI/CD et dépôt** | permissions des workflows GitHub Actions, actions épinglées au SHA, `pull_request_target`, secrets dans les journaux, protection des branches, OIDC |
-| **Module conformité** | **code à installer** : bandeau de consentement qui bloque réellement, purge automatique, routes d'export et de suppression, registre et preuve |
+| **Module conformité** | **code à installer** : bandeau de consentement qui bloque réellement, purge idempotente, suppression de compte en deux phases avec rétractation réelle, export, registre et preuve |
 
 ## Méthode
 
-Deux passes encadrent toutes les autres. La **passe 0** décide quelles protections valent leur coût en expérience — sans elle, l'audit produit un site plus sûr et moins utilisé. La **passe 9** protège le code pendant qu'on le modifie : branche dédiée, un commit par groupe, retour arrière connu, et un parcours de non-régression rejoué après chaque groupe.
+Trois passes encadrent toutes les autres. La **passe 0** décide quelles protections valent leur coût en expérience — sans elle, l'audit produit un site plus sûr et moins utilisé. La **passe 9** protège le code pendant qu'on le modifie : branche dédiée, un commit par groupe, retour arrière connu, et un parcours de non-régression rejoué après chaque groupe. La **passe 10** donne le protocole de correction : reproduire avant de corriger, tester avant d'annoncer, et les dix vérifications avant de pousser.
 
 L'audit se fait par passes numérotées, une à la fois : **constater** dans le code réel, **rapporter** avec fichier et gravité, **corriger** côté serveur, **vérifier** par une preuve. Jamais deux passes enchaînées sans vérification de la première.
 
@@ -81,11 +82,19 @@ references/06-rgpd-conformite.md      CNIL, cookies, droits, sous-traitants
 references/07-verification.md         tests, preuves, rapport client
 references/08-cicd-et-chaine-outils.md GitHub Actions, dépôt, chaîne d'approvisionnement
 references/09-non-regression.md       Git, cassures, parcours de vérification
+references/10-methode-de-correction.md corriger, tester, vérifier, livrer
 assets/mission-audit-complet.md       prompt de mission — audit sécurité intégral
 assets/mission-rgpd.md                prompt de mission — audit RGPD technique
 assets/checklist-pre-lancement.md     à cocher avant chaque livraison
 assets/prompts-rapides.md             20 prompts à coller, dans l'ordre
 scripts/audit-express.sh              reconnaissance passive d'un site en ligne
+scripts/lib-domaine.sh                normalisation de domaine (évite les faux positifs SPF/DMARC)
+
+tests/                                suite de tests — à lancer après toute modification du code
+  run-tests.sh                        lanceur unique, dit ce qui n'a PAS pu être testé
+  sql/                                migrations, purge, effacement, sur un vrai PostgreSQL
+  js/                                 bandeau de consentement (jsdom), syntaxe TypeScript
+  shell/                              normalisation de domaine
 
 conformite/                           le volet légal, en code plutôt qu'en conseils
   01-consentement-cookies.md          règle CNIL, exemptions, blocage réel
@@ -95,7 +104,7 @@ conformite/                           le volet légal, en code plutôt qu'en con
   05-donnees-sensibles-et-aipd.md     base légale, article 9, AIPD, IA, minimisation
   code/consentement/                  bandeau vanilla + React, journal de preuve
   code/retention/                     politique déclarative, purge, migration SQL
-  code/effacement/                    routes d'export et de suppression, registre
+  code/effacement/                    export, suppression en deux phases, rétractation, registre
 ```
 
 ## Le volet légal
