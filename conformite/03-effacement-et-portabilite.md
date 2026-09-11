@@ -84,6 +84,42 @@ Deux raisons : le délai d'un mois se prouve, et le refus partiel doit être mot
 
 Une suppression de compte demande **confirmation explicite** (retaper son email ou le mot de passe), affiche ce qui sera supprimé et ce qui sera conservé, et envoie un email de confirmation. Un délai de grâce de 30 jours avant suppression définitive est une bonne pratique — il protège des suppressions impulsives ou malveillantes, à condition que le compte soit immédiatement désactivé.
 
+## Le délai de grâce, concrètement
+
+C'est le point où les implémentations se trompent le plus souvent : elles
+**annoncent** un délai de rétractation tout en détruisant les données dès la
+demande. Il n'y a alors rien à rétracter, et la promesse faite à la personne
+est fausse.
+
+Le modèle implémenté dans `code/effacement/` sépare donc deux phases :
+
+| | Phase 1 — immédiate | Phase 2 — à l'échéance |
+|---|---|---|
+| Où | `route-suppression.ts` | `purger_comptes_supprimes()`, dans `migration-demandes.sql` |
+| Ce qui se passe | sessions révoquées, jetons détruits, compte désactivé, désinscription des envois | destruction et anonymisation réelles |
+| Données personnelles | **intactes** | détruites ou anonymisées |
+| Effet pour la personne | plus aucun accès, plus aucun traitement | irréversible |
+| Rétractation | possible, via `route-annulation.ts` | impossible |
+
+Deux exigences techniques qui ne se négocient pas :
+
+- **La phase 1 est une seule transaction.** Une suppression à moitié faite est
+  pire qu'une suppression refusée : la personne a perdu des données sans que sa
+  demande soit enregistrée.
+- **La phase 2 est atomique aussi**, et écrite en PL/pgSQL pour cette raison.
+  Elle remonte à l'appelant les chemins des fichiers du stockage objet, qui
+  n'est pas transactionnel : on les supprime **après** validation, jamais avant.
+
+Le compte étant désactivé, la personne ne peut plus se connecter : le lien reçu
+par email est son seul chemin de retour. Il porte un jeton de 32 octets issu
+d'un CSPRNG, stocké haché, à usage unique, expirant avec la fenêtre.
+
+**La durée de la fenêtre est un choix métier, pas une durée légale.** Le RGPD
+impose un effacement « dans les meilleurs délais » sans fixer de chiffre. Plus
+la fenêtre est longue, plus il faut pouvoir démontrer que le traitement a bien
+cessé pendant celle-ci. [VÉRIFICATION JURIDIQUE NÉCESSAIRE] avant de retenir
+une valeur nettement supérieure à 30 jours.
+
 ## Vérification
 
 - Demander l'export sur un compte de test : le fichier contient bien tout, et rien qui appartienne à autrui.

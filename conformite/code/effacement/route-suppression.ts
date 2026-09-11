@@ -9,20 +9,44 @@
  * Erreur classique des implémentations générées : un delete cascade qui
  * emporte les factures — non-conformité comptable, et données irrécupérables.
  *
- * Modèle retenu : désactivation immédiate, purge définitive après 30 jours.
- * La personne perd l'accès tout de suite (l'effet qu'elle demande) et garde
- * une fenêtre de rétractation en cas de suppression impulsive ou malveillante.
+ * ---------------------------------------------------------------------------
+ * MODÈLE EN DEUX PHASES
+ *
+ * Phase 1 — ICI, immédiate et transactionnelle.
+ *   Les ACCÈS sont coupés : sessions révoquées, jetons détruits, compte
+ *   désactivé, désinscription des envois. Aucune donnée personnelle n'est
+ *   encore détruite. La personne perd tout de suite l'usage du compte, ce qui
+ *   est l'effet qu'elle demande, et le traitement cesse.
+ *
+ * Phase 2 — différée, dans purger_comptes_supprimes() (migration-demandes.sql).
+ *   À l'échéance de `purge_prevue_le`, les données sont réellement détruites
+ *   ou anonymisées, en une seule transaction PL/pgSQL.
+ *
+ * Entre les deux : la fenêtre de rétractation, réelle — le compte est rétabli
+ * par route-annulation.ts. La version précédente de ce fichier annonçait cette
+ * fenêtre tout en détruisant immédiatement adresses, favoris, paniers,
+ * notifications, fichiers et hash du mot de passe : il n'y avait rien à
+ * rétracter.
+ *
+ * FENETRE_JOURS est un CHOIX MÉTIER, pas une durée légale. Le RGPD impose un
+ * effacement « dans les meilleurs délais » sans fixer de chiffre.
+ * [VÉRIFICATION JURIDIQUE NÉCESSAIRE] avant de retenir une valeur élevée :
+ * plus la fenêtre est longue, plus il faut pouvoir démontrer que le traitement
+ * a bien cessé pendant celle-ci.
  */
 
+import { createHash, randomBytes } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getSession, verifierMotDePasse, revoquerSessions } from '@/lib/auth'
 import { sql } from '@/lib/db'
-import { supprimerFichiers } from '@/lib/stockage'
 import { supprimerContactEmailing } from '@/lib/emailing'
 import { envoyerEmail } from '@/lib/mail'
 
 export const runtime = 'nodejs'
+
+/** Durée de la fenêtre de rétractation. Choix métier — voir l'en-tête. */
+const FENETRE_JOURS = Number(process.env.RGPD_FENETRE_RETRACTATION_JOURS ?? 30)
 
 const Corps = z.object({
   motDePasse: z.string().min(1).max(200),
@@ -52,123 +76,163 @@ export async function POST(request: Request) {
   const id = session.user.id
   const email = session.user.email
 
-  const [demande] = await sql`
-    insert into demandes_rgpd (utilisateur_id, type, statut, canal)
-    values (${id}, 'effacement', 'en_cours', 'application')
-    returning id
-  `
+  // Jeton de rétractation : aléatoire (CSPRNG), transmis en clair par email,
+  // stocké haché. Le compte étant désactivé, la personne ne peut plus se
+  // connecter : ce lien est son seul chemin de retour.
+  const jetonClair = randomBytes(32).toString('base64url')
+  const jetonHash = createHash('sha256').update(jetonClair).digest('hex')
 
-  /* ------------------------------------------------ 1. supprimable tout de suite */
+  /* ====================================================================
+     PHASE 1 — une seule transaction : tout passe, ou rien ne passe.
+     ==================================================================== */
 
-  await sql`delete from sessions               where utilisateur_id = ${id}`
-  await sql`delete from tokens_reinitialisation where utilisateur_id = ${id}`
-  await sql`delete from paniers                where utilisateur_id = ${id}`
-  await sql`delete from favoris                where utilisateur_id = ${id}`
-  await sql`delete from adresses               where utilisateur_id = ${id}`
-  await sql`delete from notifications          where utilisateur_id = ${id}`
+  let demandeId: number
+  let purgePrevueLe: Date
 
-  // Fichiers téléversés : la ligne en base ET l'objet dans le stockage.
-  const fichiers = await sql`
-    select id, chemin_stockage from fichiers where utilisateur_id = ${id}
-  `
-  if (fichiers.length > 0) {
-    await supprimerFichiers(fichiers.map((f) => f.chemin_stockage))
-    await sql`delete from fichiers where utilisateur_id = ${id}`
+  try {
+    const resultat = await sql.begin(async (tx) => {
+      // Une demande d'effacement déjà en cours ne se dédouble pas.
+      const [dejaEnCours] = await tx`
+        select id from demandes_rgpd
+         where utilisateur_id = ${id}
+           and type = 'effacement'
+           and statut in ('recue', 'en_cours')
+         limit 1
+      `
+      if (dejaEnCours) {
+        throw Object.assign(new Error('Demande déjà en cours'), { code: 'DEJA_EN_COURS' })
+      }
+
+      const [demande] = await tx`
+        insert into demandes_rgpd
+          (utilisateur_id, type, statut, canal, identite_verifiee_par,
+           annulation_token_hash, annulation_expire_le)
+        values
+          (${id}, 'effacement', 'en_cours', 'application', 'session',
+           ${jetonHash}, now() + make_interval(days => ${FENETRE_JOURS}))
+        returning id
+      `
+
+      // Couper les accès, tout de suite. Ce sont les seules destructions de la
+      // phase 1 : elles ne détruisent aucune donnée personnelle et ne gênent
+      // en rien la rétractation.
+      await tx`delete from sessions                where utilisateur_id = ${id}`
+      await tx`delete from tokens_reinitialisation where utilisateur_id = ${id}`
+
+      const [u] = await tx`
+        update utilisateurs
+           set actif = false,
+               supprime_le = now(),
+               purge_prevue_le = now() + make_interval(days => ${FENETRE_JOURS})
+         where id = ${id}
+           and supprime_le is null
+        returning purge_prevue_le
+      `
+      if (!u) {
+        throw Object.assign(new Error('Compte introuvable ou déjà supprimé'), {
+          code: 'DEJA_SUPPRIME',
+        })
+      }
+
+      return { demandeId: demande.id as number, purgePrevueLe: u.purge_prevue_le as Date }
+    })
+
+    demandeId = resultat.demandeId
+    purgePrevueLe = resultat.purgePrevueLe
+  } catch (e) {
+    const code = (e as { code?: string }).code
+    if (code === 'DEJA_EN_COURS' || code === 'DEJA_SUPPRIME') {
+      // Demander deux fois la suppression n'est pas une erreur de la personne.
+      return NextResponse.json(
+        { statut: 'deja_demandee', message: 'Une suppression est déjà en cours.' },
+        { status: 409 }
+      )
+    }
+    // La transaction a été annulée : le compte est intact. On le dit clairement,
+    // plutôt que de laisser croire à une suppression partielle.
+    console.error('[rgpd] échec de la phase 1 de suppression', e)
+    return NextResponse.json(
+      { erreur: 'La suppression n’a pas pu être enregistrée. Aucune donnée n’a été modifiée.' },
+      { status: 500 }
+    )
   }
 
-  /* --------------------------------------------------- 2. à anonymiser, pas à supprimer */
+  /* ====================================================================
+     HORS TRANSACTION — effets non transactionnels, après validation.
+     Aucun de ces échecs ne remet en cause la phase 1 : ils sont journalisés
+     dans la demande et repris manuellement si besoin.
+     ==================================================================== */
 
-  // Contenus publics : on coupe le lien avec la personne sans casser les fils
-  // de discussion des autres utilisateurs.
-  await sql`
-    update commentaires
-       set auteur_id = null, auteur_nom = 'Utilisateur supprimé', auteur_email = null
-     where auteur_id = ${id}
-  `
-
-  // Commandes et factures : conservation légale de 10 ans. On garde le
-  // document comptable, on retire l'identité vivante.
-  await sql`
-    update commandes
-       set client_nom = 'Client supprimé', client_email = null, client_telephone = null
-     where utilisateur_id = ${id}
-  `
-  await sql`
-    update factures
-       set client_nom = 'Client supprimé', client_email = null
-     where utilisateur_id = ${id}
-  `
-
-  /* ------------------------------------------------------ 3. sous-traitants */
-
-  // Chaque échec est journalisé mais ne bloque pas la suppression : la
-  // personne ne doit pas rester en base parce qu'une API tierce est en panne.
   const echecs: string[] = []
+
+  // Révocation côté magasin de sessions externe (Redis, Auth.js…).
+  try {
+    await revoquerSessions(id)
+  } catch (e) {
+    echecs.push(`sessions externes: ${e instanceof Error ? e.message : 'échec'}`)
+  }
+
+  // Désinscription des envois : le traitement doit cesser immédiatement, et
+  // l'opération est sans risque pour la rétractation (réinscription possible).
   try {
     await supprimerContactEmailing(email)
   } catch (e) {
     echecs.push(`emailing: ${e instanceof Error ? e.message : 'échec'}`)
   }
 
-  // À traiter selon les outils du projet :
-  //   Stripe   → anonymiser le customer, garder les charges (obligation comptable)
-  //   Sentry   → API de suppression des données par utilisateur
-  //   CRM      → suppression du contact
-  //   Analytics→ demande de suppression par identifiant client
+  // Les sous-traitants dont le traitement est DESTRUCTIF se traitent en
+  // phase 2 : la fenêtre de rétractation vaut aussi chez eux.
+  //   Stripe    → anonymiser le customer, garder les charges (obligation comptable)
+  //   Sentry    → API de suppression des données par utilisateur
+  //   CRM       → suppression du contact
+  //   Analytics → demande de suppression par identifiant client
 
-  /* ------------------------------------------------ 4. désactivation du compte */
+  if (echecs.length > 0) {
+    await sql`
+      update demandes_rgpd
+         set note = ${'Phase 1 — échecs sous-traitants : ' + echecs.join(' | ')}
+       where id = ${demandeId}
+    `.catch(() => {})
+  }
 
-  const jeton = crypto.randomUUID()
-  await sql`
-    update utilisateurs
-       set supprime_le = now(),
-           purge_prevue_le = now() + interval '30 days',
-           actif = false,
-           email = ${'supprime+' + jeton + '@invalide.local'},
-           email_original_hash = encode(digest(${email}, 'sha256'), 'hex'),
-           nom = 'Compte supprimé', prenom = null, telephone = null,
-           avatar_url = null, mot_de_passe_hash = null
-     where id = ${id}
-  `
-  // email_original_hash : permet de reconnaître une réinscription frauduleuse
-  // ou de retrouver la demande, sans conserver l'adresse en clair.
+  /* -------------------------------------------------------- confirmation */
 
-  await revoquerSessions(id)
+  const lienAnnulation =
+    `${process.env.APP_URL ?? 'https://exemple.fr'}` +
+    `/mes-donnees/annuler-suppression?jeton=${jetonClair}`
 
-  await sql`
-    update demandes_rgpd
-       set statut = 'traitee', traitee_le = now(),
-           note = ${
-             echecs.length
-               ? 'Traitée avec échecs sous-traitants : ' + echecs.join(' | ')
-               : 'Traitée intégralement'
-           }
-     where id = ${demande.id}
-  `
-
-  /* -------------------------------------------------------- 5. confirmation */
-
-  // Envoyée à l'adresse d'origine, avant qu'elle ne soit plus exploitable.
   try {
     await envoyerEmail({
       to: email,
-      subject: 'Votre compte a été supprimé',
+      subject: 'Votre demande de suppression de compte',
       text:
-        'Votre compte a été supprimé et vos données personnelles ont été effacées.\n\n' +
-        'Ce qui est conservé, et pourquoi :\n' +
+        'Votre compte a été désactivé et vos données ne sont plus utilisées.\n\n' +
+        `Suppression définitive prévue le ${purgePrevueLe.toISOString().slice(0, 10)}.\n\n` +
+        'Si vous changez d’avis, ce lien rétablit votre compte jusqu’à cette date :\n' +
+        lienAnnulation + '\n\n' +
+        'Ce qui sera conservé après la suppression définitive, et pourquoi :\n' +
         '  • Vos factures, pendant 10 ans — obligation comptable (code de commerce). ' +
-        'Elles ne sont plus rattachées à votre identité dans notre application.\n' +
+        'Elles ne seront plus rattachées à votre identité dans notre application.\n' +
         '  • Vos données peuvent subsister jusqu’à 30 jours dans nos sauvegardes, ' +
         'le temps de leur rotation normale.\n\n' +
         'Pour toute question : ' + (process.env.CONTACT_RGPD ?? 'privacy@exemple.fr'),
     })
-  } catch {
-    /* l'échec d'envoi ne remet pas en cause la suppression */
+  } catch (e) {
+    // L'échec d'envoi ne remet pas en cause la suppression, mais il prive la
+    // personne de son chemin de rétractation : à signaler, pas à taire.
+    console.error('[rgpd] envoi du mail de confirmation impossible', e)
+    await sql`
+      update demandes_rgpd
+         set note = coalesce(note || ' | ', '') || 'Email de confirmation non envoyé'
+       where id = ${demandeId}
+    `.catch(() => {})
   }
 
   const reponse = NextResponse.json({
-    statut: 'supprime',
-    conserve: [
+    statut: 'desactive',
+    suppression_definitive_le: purgePrevueLe,
+    retractation_possible_jusquau: purgePrevueLe,
+    conserve_apres_suppression: [
       { donnee: 'Factures', duree: '10 ans', motif: 'Obligation comptable (code de commerce)' },
       { donnee: 'Sauvegardes', duree: '30 jours', motif: 'Rotation technique' },
     ],
